@@ -1,0 +1,17 @@
+checkpoints/
+checkpoints_newbaseline/
+datasets/
+data/indoor.pkl
+baselines/
+dataset/
+vis/
+vis.old/
+ckpt_bkup/
+baselines/
+checkpoints_newbaseline/
+vis_bk/
+vifi_data.pkl
+h3d_vifi.pkl
+jrdb.pkl
+*.pkl
+*.pt
