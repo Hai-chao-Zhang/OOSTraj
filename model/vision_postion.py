@@ -69,6 +69,7 @@ class VisionPosition(Module): #
             if m.bias is not None:
                 m.bias.data.fill_(0.01)
 
+# class VisionPosition(Module): #
 class VisionPosition_wopredictor_1stage(Module):
     def __init__(self, C):
         super().__init__()
@@ -253,10 +254,10 @@ class VisionPosition_wocamproj(Module): # ablation2_w/o_cam_projection
 
         # self.predictor = getattr(model_module, C.args.dec_model)(C, in_dim = 29, out_dim=8 ) 
         # self.predictor = getattr(model_module, C.args.dec_model)(C, in_dim = 10, out_dim=8 ) 
-        self.predictor = getattr(model_module, C.args.dec_model)(C, in_dim = 10, out_dim=8 ) 
+        self.predictor = getattr(model_module, C.args.dec_model)(C, in_dim = 10, out_dim=8 )
         # self.predictor = getattr(model_module, C.args.dec_model)(C, in_dim = 6, out_dim=8 ) 
 
-        self.denoise_2nd_enc =  getattr(model_module, "Transformer")(C, in_dim = 15, out_dim=4 ) 
+        self.denoise_2nd_enc =  getattr(model_module, "Transformer")(C, in_dim = 15, out_dim=4 )
 
 
         self.denoise_3rd_enc = getattr(model_module, "Transformer")(C, in_dim = 7, out_dim=4 )

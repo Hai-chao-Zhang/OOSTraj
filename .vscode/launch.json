@@ -47,7 +47,7 @@
         {//  python train_vispos.py train --model VisionPosition --gpus 1 --phase 2 --dataset vifi --dec_model Transformer 
             "name": " train", //python train.py train --model Transformer --gpus 0,1 --phase 2
             // "args": ["train","--model","VisionPosition","--gpus","0","--phase","2","--dataset","vifi"], //,"--is_proc_data"],//["ViTag", "LSTM", "NMT", "UNet", "Transformer","SingleLayerViTag"]
-            "args": ["train","--gpus","0","--phase","2","--dataset","jrdb","--learning_rate","0.001"],
+            "args": ["train","--gpus","0","--phase","2","--dataset","vifi","--learning_rate","0.001"],    //["train","--gpus","0","--phase","2","--dataset","jrdb","--learning_rate","0.001"]
             "type": "python",
             "request": "launch",
             "program": "./train_vispos.py",
