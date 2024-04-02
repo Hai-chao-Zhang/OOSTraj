@@ -9,8 +9,8 @@ import torchmetrics
 from config.config import Config
 import pickle as pkl
 from data.dataloader import Dataset_ViFi, load_data
-
 from h3d.dataloader import Dataset_H3D, load_data_h3d
+from JRDB.dataloader import Dataset_JRDB, load_data_jrdb
 
 import random
 import logging
@@ -19,13 +19,15 @@ from torch.optim.lr_scheduler import ExponentialLR
 
 # from model.vitag import ViTag, LSTM, NMT
 import model.vitag as model_module
+from model.vision_postion import VisionPosition
+
 seed = 42 # 2836 # 42 
 torch.manual_seed(seed)
 np.random.seed(seed)
 random.seed(seed)
 
 class EarlyStopping():
-    def __init__(self,logger,patience=7,verbose=False,delta=0):
+    def __init__(self,logger,patience=7,verbose=True,delta=0):
         self.logger = logger
         self.patience = patience
         self.verbose = verbose
@@ -55,7 +57,7 @@ class EarlyStopping():
 
     def save_checkpoint(self,val_loss,model,path, phase):
         if self.verbose:
-            self.logger(
+            self.logger.debug(
                 f'Validation loss increased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ...')
         torch.save(model.state_dict(), path+'/'+f'phase_{phase}_model.pth')
         self.val_loss_min = val_loss
@@ -71,7 +73,8 @@ class Calculate():
 
         self.device = device[0]
         pos = "noisy" if C.args.is_pos else ""
-        self.ckpt_saving_path = os.path.join(f"checkpoints", f"{args.model}_{pos}")
+        # self.ckpt_saving_path = os.path.join(f"checkpoints", f"{args.model}_{pos}_{args.dec_model}_Ablation")
+        self.ckpt_saving_path = os.path.join(f"checkpoints", f"{args.model}_{pos}_{args.dec_model}")
         self.model = model.cuda()
         self.criterion = nn.MSELoss(reduction="mean").cuda()
         self.optimizer = torch.optim.Adam(self.model.parameters(),lr=args.learning_rate, weight_decay = 0.0005)
@@ -100,7 +103,7 @@ class Calculate():
                         datefmt='%Y/%m/%d %H:%M:%S',
                         format='%(asctime)s - %(name)s - %(levelname)s - %(lineno)d - %(module)s - %(message)s')
         self.logger = logging.getLogger(__name__)
-        self.early_stopping = EarlyStopping(self.logger, patience=args.patience,verbose=False)
+        self.early_stopping = EarlyStopping(self.logger, patience=args.patience,verbose=True)
 
         isize = (40,6) if C.args.dataset == "h3d" else (50,5)
         self.ran_mask = RandomMaskingGenerator( input_size=isize) #input_size=(40,6)
@@ -149,6 +152,8 @@ class Calculate():
         # self.vifi_dataset(Dataset_ViFi)
         if C.args.dataset == "vifi":
             self.train_dataloader, self.valid_dataloader = load_data(config)
+        elif C.args.dataset == "jrdb":
+            self.train_dataloader, self.valid_dataloader = load_data_jrdb(config)
         elif C.args.dataset == "h3d":
             self.train_dataloader, self.valid_dataloader = load_data_h3d()
         else:
@@ -156,7 +161,7 @@ class Calculate():
         dsize = 6 if C.args.dataset == "h3d" else 5
         self.log = "Loop \t Train Loss \t Train Acc % \t Test Loss \t Test Acc % "
         self.logger.info(self.log)
-        interl_gps, nearst_gps, imu19, bbx4, passersby_interl_gps, passersby_nearst_gps = next(iter(self.train_dataloader))
+        interl_gps, nearst_gps, imu, bbx4, passersby_bbx4, passersby_interl_gps, passersby_nearst_gps = next(iter(self.train_dataloader))
         # self.logger.info(summary(self.model, [list(traj.shape)[1:], list(ftm.shape)[1:], list(imu.shape)[1:]]))
         self.logger.info(self.model)
 
@@ -164,15 +169,16 @@ class Calculate():
         #     self.early_stopping.load_checkpoint(self.model, path=self.ckpt_saving_path, phase=1)
         for epoch in range(args.epochs):
             self.model.train()
-            train_epoch_loss = []
-            for idx, (interl_gps, nearst_gps, imu, bbx, passersby_interl_gps, passersby_nearst_gps) in enumerate(self.train_dataloader): # interl_gps, nearst_gps, imu19, bbx4
+            train_epoch_loss =  {"loss": [], "loss_denoise": [], "loss_pred": []}
+            
+            for idx, (interl_gps, nearst_gps, imu, bbx4, passersby_bbx4, passersby_interl_gps, passersby_nearst_gps) in enumerate(self.train_dataloader): # interl_gps, nearst_gps, imu19, bbx4
 
                 interl_gps = interl_gps.to(torch.float32).cuda()
                 # noisy_traj = noisy_traj.to(torch.float32).cuda()
                 nearst_gps = nearst_gps.to(torch.float32).cuda()
                 imu = imu.to(torch.float32).cuda()
-                bbx = bbx.type(torch.float32).cuda()
-
+                bbx4 = bbx4.type(torch.float32).cuda()
+                passersby_bbx4 = passersby_bbx4.type(torch.float32).cuda()
                 passersby_interl_gps = passersby_interl_gps.to(torch.float32).cuda()
                 passersby_nearst_gps = passersby_nearst_gps.to(torch.float32).cuda()
 
@@ -188,19 +194,38 @@ class Calculate():
                 # # test_traj = target*mask # ~mask means visible
                 # traj = target
                 # traj[mask==0]=-1
-                passersby_interl_gps = passersby_interl_gps.view(-1, 200, 4) # TODO: need update the dimension
-                passersby_nearst_gps = passersby_nearst_gps.view(-1, 200, 4)
+                passersby_interl_gps = passersby_interl_gps.view(-1, 200, passersby_interl_gps.shape[-1]*2) # TODO: need update the dimension
+                passersby_nearst_gps = passersby_nearst_gps.view(-1, 200, passersby_nearst_gps.shape[-1]*2)
 
-                pred_matrix = self.model(passersby_interl_gps, passersby_nearst_gps, imu)
-                trans_bbx = self.trans_matmul(pred_matrix, interl_gps)
-                # trans_bbx = pred_matrix * interl_gps #  interl_gps * pred_matrix
-                outputs = trans_bbx.squeeze(2)
+                # bbx4
+                # if pred:
+                if True:
+                    mask_ratio = C.args.mask_ratio
+                    B,T,_ = bbx4.shape
+                    bbx4_in_gt = bbx4[:,:int(mask_ratio*T),:]
+                    interl_gps = interl_gps[:,:int(mask_ratio*T),:]
+                    nearst_gps = nearst_gps[:,:int(mask_ratio*T),:]
+                    in_imu19 = imu[:,:int(mask_ratio*T),:]
+                
+                pred_bbx, denoised_bbx_observation = self.model(interl_gps, nearst_gps, in_imu19, bbx4, passersby_bbx4, passersby_interl_gps, passersby_nearst_gps, imu) # bbx is predicted sequence, trans_bbx is the denoised bbx
+                # for baseline
+                # pred_matrix = self.model(passersby_interl_gps, passersby_nearst_gps, imu)
+                # trans_bbx = self.trans_matmul(pred_matrix, interl_gps)
+
+                # outputs = trans_bbx.squeeze(2)
 
                 self.optimizer.zero_grad()
-                loss = self.criterion(outputs, bbx)
+                loss_denoise = self.criterion(denoised_bbx_observation, bbx4_in_gt)
+                # loss_denoise = torch.Tensor([0]).cuda()
+                loss_pred = self.criterion(pred_bbx, bbx4)
+                loss = loss_denoise + loss_pred
                 loss.backward()
                 self.optimizer.step()
-                train_epoch_loss.append(loss.item())
+
+                train_epoch_loss["loss"].append(loss.item())
+                train_epoch_loss["loss_denoise"].append(loss_denoise.item())
+                train_epoch_loss["loss_pred"].append(loss_pred.item())
+
                 # train_loss.append(loss.item())
 
                 # self.train_acc(outputs, target)
@@ -208,56 +233,26 @@ class Calculate():
                 # if idx%(len(self.train_dataloader)//2)==0:
                 #     self.logger("epoch={}/{},{}/{}of train, loss={}".format(
                 #         epoch, args.epochs, idx, len(self.train_dataloader),loss.item()))
-            self.train_epochs_loss.append(np.average(train_epoch_loss))
-
-            total_train_acc = np.average(train_epoch_loss)
+            # self.train_epochs_loss.append(np.average(train_epoch_loss))
+            # total_train_acc = np.average(train_epoch_loss)
             # self.train_acc.reset()
             
             #=====================valid============================
             self.model.eval()
-            valid_epoch_loss = []
+            valid_epoch_loss = {"tloss": [], "tloss_denoise": [], "tloss_pred": [], "iou": [], "iou_d": [], "denoised_iou": [], "denoised_iou_d": []}
             valid_iou_D_loss = []
             valid_iou_loss = []
             with torch.no_grad():
-                for idx, (interl_gps, nearst_gps, imu, bbx, passersby_interl_gps, passersby_nearst_gps) in enumerate(self.train_dataloader): # interl_gps, nearst_gps, imu19, bbx4
-                    interl_gps = interl_gps.to(torch.float32).cuda()
-                    # noisy_traj = noisy_traj.to(torch.float32).cuda()
-                    nearst_gps = nearst_gps.to(torch.float32).cuda()
-                    imu = imu.to(torch.float32).cuda()
-                    bbx = bbx.type(torch.float32).cuda()
+                for idx, (interl_gps, nearst_gps, imu, bbx4, passersby_bbx4, passersby_interl_gps, passersby_nearst_gps) in enumerate(self.valid_dataloader): # interl_gps, nearst_gps, imu19, bbx4
 
-                    passersby_interl_gps = passersby_interl_gps.to(torch.float32).cuda()
-                    passersby_nearst_gps = passersby_nearst_gps.to(torch.float32).cuda()
-
-
-
-
-
-
-
-
-
-
-
-                    # ratio = random.random() 
-                    # # ratio = 0.8 # ablation for w/o rms
-                    # mask = self.ran_mask.gen(batch_size=target.size(0), mask_ratio=ratio)
-                    # mask = torch.Tensor(mask).unsqueeze(-1).repeat(1,1,dsize).cuda()
-                    # # mask = torch.Tensor(mask).unsqueeze(-1).repeat(1,1,5).cuda()
-                    # mask = 1 - mask
-                    # # try:
-                    # # test_traj = target*mask # ~mask means visible
-                    # traj = target
-                    # traj[mask==0]=-1
-
-
-                    passersby_interl_gps = passersby_interl_gps.view(-1, 200, 4) # TODO: need update the dimension
-                    passersby_nearst_gps = passersby_nearst_gps.view(-1, 200, 4)
-
-                    pred_matrix = self.model(passersby_interl_gps, passersby_nearst_gps, imu)
-                    trans_bbx = self.trans_matmul(pred_matrix, interl_gps)
-                    # trans_bbx = pred_matrix * interl_gps #  interl_gps * pred_matrix
-                    outputs = trans_bbx.squeeze(2)
+                        interl_gps = interl_gps.to(torch.float32).cuda()
+                        # noisy_traj = noisy_traj.to(torch.float32).cuda()
+                        nearst_gps = nearst_gps.to(torch.float32).cuda()
+                        imu = imu.to(torch.float32).cuda()
+                        bbx4 = bbx4.type(torch.float32).cuda()
+                        passersby_bbx4 = passersby_bbx4.type(torch.float32).cuda()
+                        passersby_interl_gps = passersby_interl_gps.to(torch.float32).cuda()
+                        passersby_nearst_gps = passersby_nearst_gps.to(torch.float32).cuda()
 
 
 
@@ -268,26 +263,77 @@ class Calculate():
 
 
 
-                    # outputs = self.model(interl_gps, nearst_gps, imu)
-                    # self.optimizer.zero_grad()
-                    loss = self.criterion(outputs, bbx)
-                    # loss.backward()
-                    # self.optimizer.step()
-                    valid_epoch_loss.append(loss.item())
-                    # self.valid_loss.append(loss.item())
-
-                    with open(f'vis/vis_{C.args.model}.pkl','wb') as f:
-                        pkl.dump([outputs, bbx],f)
 
 
-                    iou_loss, iou_d  = self.iou_d(outputs, bbx)
-                    valid_iou_loss.append(torch.mean(iou_loss).item())
-                    valid_iou_D_loss.append(torch.mean(iou_d).item())
+                        # ratio = random.random() 
+                        # # ratio = 0.8 # ablation for w/o rms
+                        # mask = self.ran_mask.gen(batch_size=target.size(0), mask_ratio=ratio)
+                        # mask = torch.Tensor(mask).unsqueeze(-1).repeat(1,1,dsize).cuda()
+                        # # mask = torch.Tensor(mask).unsqueeze(-1).repeat(1,1,5).cuda()
+                        # mask = 1 - mask
+                        # # try:
+                        # # test_traj = target*mask # ~mask means visible
+                        # traj = target
+                        # traj[mask==0]=-1
 
-                    # self.test_acc(outputs, labels)
+
+                        passersby_interl_gps = passersby_interl_gps.view(-1, 200, passersby_interl_gps.shape[-1]*2) # TODO: need update the dimension
+                        passersby_nearst_gps = passersby_nearst_gps.view(-1, 200, passersby_nearst_gps.shape[-1]*2)
+
+                        if True:
+                            mask_ratio = C.args.mask_ratio
+                            B,T,_ = bbx4.shape
+                            bbx4_in_gt = bbx4[:,:int(mask_ratio*T),:]
+                            interl_gps = interl_gps[:,:int(mask_ratio*T),:]
+                            nearst_gps = nearst_gps[:,:int(mask_ratio*T),:]
+                            in_imu19 = imu[:,:int(mask_ratio*T),:]
+                        
+                        pred_bbx, denoised_bbx_observation = self.model(interl_gps, nearst_gps, in_imu19, bbx4, passersby_bbx4, passersby_interl_gps, passersby_nearst_gps, imu) # bbx is predicted sequence, trans_bbx is the denoised bbx
+
+
+
+
+
+
+
+
+
+
+                        # outputs = self.model(interl_gps, nearst_gps, imu)
+                        # self.optimizer.zero_grad()
+                        # loss = self.criterion(denoised_bbx_observation, bbx4_in_gt) + self.criterion(pred_bbx, bbx4)
+                        loss_denoise = self.criterion(denoised_bbx_observation, bbx4_in_gt)
+                        loss_pred = self.criterion(pred_bbx, bbx4)
+                        loss = loss_denoise + loss_pred
+                        # loss.backward()
+                        # self.optimizer.step()
+                        # valid_epoch_loss.append(loss.item())
+                        # self.valid_loss.append(loss.item())
+                        valid_epoch_loss["tloss"].append(loss.item())
+                        valid_epoch_loss["tloss_denoise"].append(loss_denoise.item())
+                        valid_epoch_loss["tloss_pred"].append(loss_pred.item())
+                        
+
+
+
+                        with open(f'vis/vis_{C.args.model}_{epoch}.pkl','wb') as f:
+                            pkl.dump([pred_bbx, denoised_bbx_observation, interl_gps,  nearst_gps, bbx4],f)
+
+
+                        iou_loss, iou_d  = self.iou_d(pred_bbx, bbx4)
+                        denoised_iou_loss, denoised_iou_d  = self.iou_d(denoised_bbx_observation, bbx4_in_gt)
+                        # valid_iou_loss.append(torch.mean(iou_loss).item())
+                        valid_epoch_loss['iou'].append(torch.mean(iou_loss).item())
+                        valid_epoch_loss['iou_d'].append(torch.mean(iou_d).item())                
+
+                        valid_epoch_loss['denoised_iou'].append(torch.mean(denoised_iou_loss).item())
+                        valid_epoch_loss['denoised_iou_d'].append(torch.mean(denoised_iou_d).item())  
+                        # valid_iou_D_loss.append(torch.mean(iou_d).item())
+
+                        # self.test_acc(outputs, labels)
 
             # self.valid_epochs_loss.append(np.average(valid_epoch_loss))
-            total_test_acc = np.average(valid_epoch_loss)
+            total_test_acc = np.average(valid_epoch_loss["tloss"])
 
             valid_iou_loss_acc = np.average(valid_iou_loss)
             valid_iou_D_loss_acc = np.average(valid_iou_D_loss)
@@ -295,8 +341,13 @@ class Calculate():
             # total_test_acc = self.test_acc.compute()
             # self.test_acc.reset()
 
-            
-            self.log = f"{epoch}/{args.epochs} Phase_{config.args.phase} \t {np.average(train_epoch_loss):.8f} \t {total_train_acc:.8f} \t {np.average(valid_epoch_loss):.8f} \t {total_test_acc*2048:.8f} \t iou_d {valid_iou_D_loss_acc:.8f}  \t iou {valid_iou_loss_acc:.8f} "
+            self.log = f"{epoch}/{args.epochs}\t "
+            for k,v in train_epoch_loss.items():
+                 self.log = self.log + f"{k}  \t {np.mean(v)*2048:.8f} \t" 
+            for k,v in valid_epoch_loss.items():
+                dmvalue = 2048 if "iou" not in k else 1
+                self.log = self.log + f"{k}  \t {np.mean(v)* dmvalue :.8f} \t"                 
+            # self.log = f"{epoch}/{args.epochs} Phase_{config.args.phase} \t {np.average(train_epoch_loss["loss"] ):.8f} \t {total_train_acc:.8f} \t {np.average(valid_epoch_loss):.8f} \t {total_test_acc*2048:.8f} \t iou_d {valid_iou_D_loss_acc:.8f}  \t iou {valid_iou_loss_acc:.8f} "
             self.logger.info(self.log)
 
             #==================early stopping======================
@@ -320,9 +371,10 @@ class Calculate():
         self.logger.debug(f"best score is {self.early_stopping.best_score} best epoch is {self.early_stopping.best_epoch} ")
     
     def test_vis(self, config):
-        # self.vifi_dataset(Dataset_ViFi)
         if C.args.dataset == "vifi":
             self.train_dataloader, self.valid_dataloader = load_data(config)
+        elif C.args.dataset == "jrdb":
+            self.train_dataloader, self.valid_dataloader = load_data_jrdb(config)
         elif C.args.dataset == "h3d":
             self.train_dataloader, self.valid_dataloader = load_data_h3d()
         else:
@@ -330,64 +382,140 @@ class Calculate():
         dsize = 6 if C.args.dataset == "h3d" else 5
         self.log = "Loop \t Train Loss \t Train Acc % \t Test Loss \t Test Acc % "
         self.logger.info(self.log)
-        traj, ftm, imu, target = next(iter(self.train_dataloader))
+        # traj, ftm, imu, target = next(iter(self.train_dataloader))
         # self.logger.info(summary(self.model, [list(traj.shape)[1:], list(ftm.shape)[1:], list(imu.shape)[1:]]))
         self.logger.info(self.model)
 
         # if config.args.phase !=1:
-        self.early_stopping.load_checkpoint(self.model.module, path=self.ckpt_saving_path, phase=2)
+        self.early_stopping.load_checkpoint(self.model, path=self.ckpt_saving_path, phase=2)
 
         #=====================valid============================
         self.model.eval()
-        valid_epoch_loss = []
+        valid_epoch_loss = {"tloss": [], "tloss_denoise": [], "tloss_pred": [], "iou": [], "iou_d": [], "denoised_iou": [], "denoised_iou_d": []}
         valid_iou_D_loss = []
         valid_iou_loss = []
         with torch.no_grad():
-            for idx, (traj, ftm, imu, target)  in enumerate(self.valid_dataloader):
-                traj = traj.to(torch.float32).cuda()
-                # noisy_traj = noisy_traj.to(torch.float32).cuda()
-                ftm = ftm.to(torch.float32).cuda()
-                imu = imu.to(torch.float32).cuda()
-                target = target.type(torch.float32).cuda()
-
-                ratio = random.random() 
-                # ratio = 0.8 # ablation for w/o rms
-                mask = self.ran_mask.gen(batch_size=target.size(0), mask_ratio=ratio)
-                mask = torch.Tensor(mask).unsqueeze(-1).repeat(1,1,dsize).cuda()
-                # mask = torch.Tensor(mask).unsqueeze(-1).repeat(1,1,5).cuda()
-                mask = 1 - mask
-                # try:
-                # test_traj = target*mask # ~mask means visible
-                traj = target
-                traj[mask==0]=-1
-
-                outputs = self.model(traj, ftm, imu)
-
-                with open(f'vis/vis_{C.args.model}.pkl','wb') as f:
-                    pkl.dump([outputs, target],f)
-
-                loss = self.criterion(outputs, target)
-                valid_epoch_loss.append(loss.item())
-                # self.valid_loss.append(loss.item())
+            for idx, (interl_gps, nearst_gps, imu, bbx4, passersby_bbx4, passersby_interl_gps, passersby_nearst_gps) in enumerate(self.valid_dataloader): # interl_gps, nearst_gps, imu19, bbx4
+                    pred_bbxs, denoised_bbx_observations, interl_gpss,  nearst_gpss, bbx4s =[],[],[],[],[]
+                    interl_gps = interl_gps.to(torch.float32).cuda()
+                    # noisy_traj = noisy_traj.to(torch.float32).cuda()
+                    nearst_gps = nearst_gps.to(torch.float32).cuda()
+                    imu = imu.to(torch.float32).cuda()
+                    bbx4 = bbx4.type(torch.float32).cuda()
+                    passersby_bbx4 = passersby_bbx4.type(torch.float32).cuda()
+                    passersby_interl_gps = passersby_interl_gps.to(torch.float32).cuda()
+                    passersby_nearst_gps = passersby_nearst_gps.to(torch.float32).cuda()
 
 
-                iou_loss, iou_d  = self.iou_d(outputs, target)
-                valid_iou_loss.append(torch.mean(iou_loss).item())
-                valid_iou_D_loss.append(torch.mean(iou_d).item())
 
-                # self.test_acc(outputs, labels)
 
-            # self.valid_epochs_loss.append(np.average(valid_epoch_loss))
-            total_test_acc = np.average(valid_epoch_loss)
+                    
 
-            valid_iou_loss_acc = np.average(valid_iou_loss)
-            valid_iou_D_loss_acc = np.average(valid_iou_D_loss)
 
-            # total_test_acc = self.test_acc.compute()
-            # self.test_acc.reset()
 
-            self.log = f"{idx} \t {np.average(valid_epoch_loss):.4f} \t {valid_iou_loss_acc:.4f} \t {valid_iou_D_loss_acc:.4f} \t {total_test_acc:.4f} "
-            self.logger.info(self.log)
+
+
+
+
+                    # ratio = random.random() 
+                    # # ratio = 0.8 # ablation for w/o rms
+                    # mask = self.ran_mask.gen(batch_size=target.size(0), mask_ratio=ratio)
+                    # mask = torch.Tensor(mask).unsqueeze(-1).repeat(1,1,dsize).cuda()
+                    # # mask = torch.Tensor(mask).unsqueeze(-1).repeat(1,1,5).cuda()
+                    # mask = 1 - mask
+                    # # try:
+                    # # test_traj = target*mask # ~mask means visible
+                    # traj = target
+                    # traj[mask==0]=-1
+
+
+                    passersby_interl_gps = passersby_interl_gps.view(-1, 200, passersby_interl_gps.shape[-1]*2) # TODO: need update the dimension
+                    passersby_nearst_gps = passersby_nearst_gps.view(-1, 200, passersby_nearst_gps.shape[-1]*2)
+
+                    if True:
+                        mask_ratio = C.args.mask_ratio
+                        B,T,_ = bbx4.shape
+                        bbx4_in_gt = bbx4[:,:int(mask_ratio*T),:]
+                        interl_gps = interl_gps[:,:int(mask_ratio*T),:]
+                        nearst_gps = nearst_gps[:,:int(mask_ratio*T),:]
+                        in_imu19 = imu[:,:int(mask_ratio*T),:]
+                    
+                    pred_bbx, denoised_bbx_observation = self.model(interl_gps, nearst_gps, in_imu19, bbx4, passersby_bbx4, passersby_interl_gps, passersby_nearst_gps, imu) # bbx is predicted sequence, trans_bbx is the denoised bbx
+
+
+
+                    pred_bbxs.append(pred_bbx)
+                    denoised_bbx_observations.append(denoised_bbx_observation)
+                    interl_gpss.append(interl_gps)
+                    nearst_gpss.append(nearst_gps)
+                    bbx4s.append(bbx4)
+
+
+
+
+
+
+
+
+                    # outputs = self.model(interl_gps, nearst_gps, imu)
+                    # self.optimizer.zero_grad()
+                    # loss = self.criterion(denoised_bbx_observation, bbx4_in_gt) + self.criterion(pred_bbx, bbx4)
+                    loss_denoise = self.criterion(denoised_bbx_observation, bbx4_in_gt)
+                    loss_pred = self.criterion(pred_bbx, bbx4)
+                    loss = loss_denoise + loss_pred
+                    # loss.backward()
+                    # self.optimizer.step()
+                    # valid_epoch_loss.append(loss.item())
+                    # self.valid_loss.append(loss.item())
+                    valid_epoch_loss["tloss"].append(loss.item())
+                    valid_epoch_loss["tloss_denoise"].append(loss_denoise.item())
+                    valid_epoch_loss["tloss_pred"].append(loss_pred.item())
+                    
+
+
+
+
+
+
+                    iou_loss, iou_d  = self.iou_d(pred_bbx, bbx4)
+                    denoised_iou_loss, denoised_iou_d  = self.iou_d(denoised_bbx_observation, bbx4_in_gt)
+                    # valid_iou_loss.append(torch.mean(iou_loss).item())
+                    valid_epoch_loss['iou'].append(torch.mean(iou_loss).item())
+                    valid_epoch_loss['iou_d'].append(torch.mean(iou_d).item())                
+
+                    valid_epoch_loss['denoised_iou'].append(torch.mean(denoised_iou_loss).item())
+                    valid_epoch_loss['denoised_iou_d'].append(torch.mean(denoised_iou_d).item())  
+                    # valid_iou_D_loss.append(torch.mean(iou_d).item())
+
+                    # self.test_acc(outputs, labels)
+        pred_bbxs = torch.cat(pred_bbxs, dim=0)
+        denoised_bbx_observations = torch.cat(denoised_bbx_observations, dim=0)
+        interl_gpss =    torch.cat(interl_gpss, dim=0)
+        nearst_gpss =   torch.cat(nearst_gpss, dim=0)
+        bbx4s =        torch.cat(bbx4s, dim=0)
+        with open(f'vis/vis_{C.args.model}_{C.args.dataset}.pkl','wb') as f:
+            pkl.dump([pred_bbxs, denoised_bbx_observations, interl_gpss,  nearst_gpss, bbx4s],f)
+        # self.valid_epochs_loss.append(np.average(valid_epoch_loss))
+        total_test_acc = np.average(valid_epoch_loss["tloss"])
+
+        valid_iou_loss_acc = np.average(valid_iou_loss)
+        valid_iou_D_loss_acc = np.average(valid_iou_D_loss)
+
+        # total_test_acc = self.test_acc.compute()
+        # self.test_acc.reset()
+
+        # self.log = f" "
+        # for k,v in train_epoch_loss.items():
+        #         self.log = self.log + f"{k}  \t {np.mean(v)*2048:.8f} \t" 
+        for k,v in valid_epoch_loss.items():
+            dmvalue = 2048 if "iou" not in k else 1
+            self.log = self.log + f"{k}  \t {np.mean(v)* dmvalue :.8f} \t"                 
+        # self.log = f"{epoch}/{args.epochs} Phase_{config.args.phase} \t {np.average(train_epoch_loss["loss"] ):.8f} \t {total_train_acc:.8f} \t {np.average(valid_epoch_loss):.8f} \t {total_test_acc*2048:.8f} \t iou_d {valid_iou_D_loss_acc:.8f}  \t iou {valid_iou_loss_acc:.8f} "
+        self.logger.info(self.log)
+
+        self.logger.info('Updating learning rate to {}'.format(self.optimizer.state_dict()['param_groups'][0]['lr']))
+        self.logger.debug(f"best score is {self.early_stopping.best_score} best epoch is {self.early_stopping.best_epoch} ")
+
         
     def test(self, imgpath):
         self.log=""
@@ -543,6 +671,8 @@ if __name__=="__main__":
     
     parser.add_argument('-tsid_idx', '--test_seq_id_idx', type=int, default='0', help='0-14') # edit
     parser.add_argument('-k', '--recent_K', type=int, default=50, help='Window length') # edit
+    parser.add_argument('--mask_ratio',  type=float, default=0.5, help='Window length') # edit
+    
     parser.add_argument('-l', '--loss', type=str, default='mse', help='mse: Mean Squared Error | b: Bhattacharyya Loss')
     parser.add_argument('-rt', '--resume_training', action='store_true', help='resume from checkpoint')
     parser.add_argument("--is_proc_data", action='store_true', help="if ture, process dataset")
@@ -552,15 +682,21 @@ if __name__=="__main__":
     parser.add_argument("--gpus", nargs="?", type=str, default= "0,1", help="input img size e.g, 0,1")
     parser.add_argument("--is_pos", action='store_true', help="if ture calculate imu trajectory")
 
-    parser.add_argument("--model", nargs="?", type=str, default= "Transformer",choices=["autobots", "hivt",  "ViTag", "LSTM", "NMT", "UNet", "Transformer","SingleLayerViTag"], help="input img size") 
-    parser.add_argument("--dataset", nargs="?", type=str, default= "vifi",choices=["vifi", "h3d"], help="input img size") 
+    parser.add_argument("--model", nargs="?", type=str, default= "VisionPosition",choices=["VisionPosition", "hivt", "autobots",  "kalman",   "ViTag", "LSTM", "NMT", "UNet", "Transformer","SingleLayerViTag","VisionPosition"], help="input img size")
+    parser.add_argument("--dec_model", nargs="?", type=str, default= "Transformer",choices=["Transformer", "hivt", "autobots",      "ViTag","GRU","RNN", "LSTM", "NMT", "UNet", "Transformer","SingleLayerViTag","VisionPosition"], help="input img size")
+
+    parser.add_argument("--dataset", nargs="?", type=str, default= "vifi",choices=["vifi", "h3d", "jrdb"], help="input img size") 
 
     args = parser.parse_args()
     args.gpus = [int(gpu) for gpu in args.gpus.split(",")]
     C = Config(args)
     if len(args.gpus) == 1:
         torch.cuda.set_device(args.gpus[0])
-    model =  getattr(model_module, args.model)(C)
+    if args.model != 'VisionPosition':
+        model =  getattr(model_module, args.model)(C)
+    else:
+        model = VisionPosition(C)
+    
     if len(args.gpus)>1:
         model = torch.nn.DataParallel(model, device_ids=args.gpus)
         # model = model.module    
@@ -576,8 +712,8 @@ if __name__=="__main__":
 
     elif args.mode == "test":
         cal.test_vis(config=C)
-    elif args.mode == "predict":
-        cal.test(args.testpath)
+    # elif args.mode == "predict":
+    #     cal.test(args.testpath)
     
 # If you installed ZED sdk you can find it in your local directory On Linux: /usr/local/zed/settings/. You can find more info in the zed's documentation (https://support.stereolabs.com/hc/en-us/articles/360007497173-What-is-the-calibration-file- ).
 

@@ -10,8 +10,14 @@ ckpt_bkup/
 baselines/
 checkpoints_newbaseline/
 vis_bk/
+__pycache__/
+data/IndoorLocalization/
+data/noisytraj/
+dataloader.old.py
+h3d/
 vifi_data.pkl
 h3d_vifi.pkl
 jrdb.pkl
 *.pkl
 *.pt
+
