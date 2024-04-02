@@ -23,7 +23,7 @@
         //     "console": "integratedTerminal",
         //     "justMyCode": true,
         //     // "stopOnEntry": true,
-        // },
+        // },train --gpus 0 --phase 2 --dataset vifi --learning_rate 0.001
         {
             "name": "Python: Current File",
             "type": "python",
@@ -39,7 +39,7 @@
             "args": ["test","--gpus","0","--phase","2","--dataset","jrdb","--learning_rate","0.001"],
             "type": "python",
             "request": "launch",
-            "program": "./train_vispos.py",
+            "program": "./train.py",
             "console": "integratedTerminal",
             "justMyCode": true,
             // "stopOnEntry": true,
@@ -50,61 +50,7 @@
             "args": ["train","--gpus","0","--phase","2","--dataset","vifi","--learning_rate","0.001"],    //["train","--gpus","0","--phase","2","--dataset","jrdb","--learning_rate","0.001"]
             "type": "python",
             "request": "launch",
-            "program": "./train_vispos.py",
-            "console": "integratedTerminal",
-            "justMyCode": true,
-            // "stopOnEntry": true,
-        },
-        {
-            "name": " train_baseline", //python train.py train --model Transformer --gpus 0,1 --phase 2
-            // "args": ["train","--model","UNet","--gpus","0","--phase","2","--is_proc_data"],//"--is_pos"],//,"--is_proc_data"],
-            "args": ["train","--model","Baseline","--gpus","0","--phase","2","--dataset","vifi"], //,"--is_proc_data"],//["ViTag", "LSTM", "NMT", "UNet", "Transformer","SingleLayerViTag"]
-            "type": "python",
-            "request": "launch",
-            "program": "./train_vispos_baseline.py",
-            "console": "integratedTerminal",
-            "justMyCode": true,
-            // "stopOnEntry": true,
-        },
-        {
-            "name": " Kalman_baseline", 
-           // "args": ["train","--model","Vanilla","--gpus","0","--phase","2"], //,"--is_proc_data"],//["ViTag", "LSTM", "NMT", "UNet", "Transformer","SingleLayerViTag"]
-            "args": ["train","--model","Kalman","--gpus","0","--phase","2"], //,"--is_pr
-            "type": "python",
-            "request": "launch",
-            "program": "./train_vispos_baseline.py",
-            "console": "integratedTerminal",
-            "justMyCode": true,
-            // "stopOnEntry": true,
-        },
-        {
-            "name": " Vanilla_baseline", 
-            // "args": ["train","--model","UNet","--gpus","0","--phase","2","--is_proc_data"],//"--is_pos"],//,"--is_proc_data"],
-            "args": ["train","--model","Vanilla","--gpus","0","--phase","2"], //,"--is_proc_data"],//["ViTag", "LSTM", "NMT", "UNet", "Transformer","SingleLayerViTag"]
-            "type": "python",
-            "request": "launch",
-            "program": "./train_vispos_baseline.py",
-            "console": "integratedTerminal",
-            "justMyCode": true,
-            // "stopOnEntry": true,
-        },
-        {
-            "name": "Python: test",
-            "args": ["test","--model","UNet","--gpus","0,1","--phase","2"],
-            "type": "python",
-            "request": "launch",
             "program": "./train.py",
-            "console": "integratedTerminal",
-            "justMyCode": true,
-            // "stopOnEntry": true,
-        },
-        {//  python train_vispos.py train --model VisionPosition --gpus 1 --phase 2 --dataset vifi --dec_model Transformer 
-            "name": " train_vispos_shuffle", //python train.py train --model Transformer --gpus 0,1 --phase 2
-            // "args": ["train","--model","UNet","--gpus","0","--phase","2","--is_proc_data"],//"--is_pos"],//,"--is_proc_data"],
-            "args": ["train","--model","VisionPosition","--gpus","0","--phase","2"], //,"--is_proc_data"],//["ViTag", "LSTM", "NMT", "UNet", "Transformer","SingleLayerViTag"]
-            "type": "python",
-            "request": "launch",
-            "program": "./train_vispos_shuffle.py",
             "console": "integratedTerminal",
             "justMyCode": true,
             // "stopOnEntry": true,

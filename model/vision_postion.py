@@ -3,7 +3,7 @@ import torch.nn as nn
 from torch.nn import Module
 import torchvision.transforms as transforms
 import numpy as np
-import model.vitag as model_module
+import model.utils as model_module
 
 class VisionPosition(Module): #
     def __init__(self, C):

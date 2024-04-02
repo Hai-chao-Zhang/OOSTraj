@@ -18,7 +18,7 @@ from torchsummary import summary
 from torch.optim.lr_scheduler import ExponentialLR
 
 # from model.vitag import ViTag, LSTM, NMT
-import model.vitag as model_module
+import model.utils as model_module
 from model.vision_postion import VisionPosition
 
 seed = 42 # 2836 # 42 
@@ -682,8 +682,8 @@ if __name__=="__main__":
     parser.add_argument("--gpus", nargs="?", type=str, default= "0,1", help="input img size e.g, 0,1")
     parser.add_argument("--is_pos", action='store_true', help="if ture calculate imu trajectory")
 
-    parser.add_argument("--model", nargs="?", type=str, default= "VisionPosition",choices=["VisionPosition", "hivt", "autobots",  "kalman",   "ViTag", "LSTM", "NMT", "UNet", "Transformer","SingleLayerViTag","VisionPosition"], help="input img size")
-    parser.add_argument("--dec_model", nargs="?", type=str, default= "Transformer",choices=["Transformer", "hivt", "autobots",      "ViTag","GRU","RNN", "LSTM", "NMT", "UNet", "Transformer","SingleLayerViTag","VisionPosition"], help="input img size")
+    parser.add_argument("--model", nargs="?", type=str, default= "VisionPosition",choices=["VisionPosition"], help="model choose")
+    parser.add_argument("--dec_model", nargs="?", type=str, default= "Transformer",choices=["Transformer"], help="predict model choose")
 
     parser.add_argument("--dataset", nargs="?", type=str, default= "vifi",choices=["vifi", "h3d", "jrdb"], help="input img size") 
 
