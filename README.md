@@ -6,7 +6,7 @@
 
 ### CVPR24
 
-by [Haichao Zhang](https://github.com/Hai-chao-Zhang/), [Yi Xu](https://sites.google.com/view/homepage-of-yi-xu/), 
+by [Haichao Zhang](https://Hai-chao-Zhang.github.io/), [Yi Xu](https://sites.google.com/view/homepage-of-yi-xu/), 
 [Hongsheng Lu](https://www.linkedin.com/in/hongsheng-lu-178486102/), [Takayuki Shimizu](https://www.linkedin.com/in/takashimizu/), [Yun Fu](http://www1.ece.neu.edu/~yunfu/). 
 </div>
 
@@ -40,8 +40,8 @@ Trajectory prediction is fundamental in computer vision and autonomous driving, 
 ## Datasets:
 
 ### Processed Vi-Fi and JRDB dataset [(Link to Google Drive)](https://drive.google.com/drive/folders/1W6ze1z8X54kK9BOgYbXYQj_AScf79Z-q?usp=sharing)
-Please download pkl files for preprocessed datasets, and put them in "JRDB/jrdb.pkl" and "vifi_dataset_gps/vifi_data.pkl"
-Or you can access original data from [Vi-Fi Dataset](https://sites.google.com/winlab.rutgers.edu/vi-fidataset/home) or [JRDB](https://jrdb.erc.monash.edu/)
+Please download pkl files for preprocessed datasets, and put them in "JRDB/jrdb.pkl" and "vifi_dataset_gps/vifi_data.pkl".
+If need, you can also access original data from [Vi-Fi Dataset](https://sites.google.com/winlab.rutgers.edu/vi-fidataset/home) or [JRDB](https://jrdb.erc.monash.edu/)
 
 # Training
 
