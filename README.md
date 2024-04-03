@@ -52,7 +52,7 @@ The training and print accuracy logs are located under ./checkpoints/
 ---
 
 ## BibTeX
-    @inproceedigs{Zhang2024OOSTraj,
+    @inproceedings{Zhang2024OOSTraj,
         title={OOSTraj: Out-of-Sight Trajectory Prediction With Vision-Positioning Denoising},
         author={Haichao Zhang, Yi Xu, Hongsheng Lu, Takayuki Shimizu, and Yun Fu},
         booktitle={In Proceedings of IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
