@@ -12,7 +12,7 @@ by [Haichao Zhang](https://Hai-chao-Zhang.github.io/), [Yi Xu](https://sites.goo
 
 ---
 
-Pytorch implementation of our method "Out-of-Sight Trajectory Prediction with Vision-Positioning Denoising" in CVPR2024.
+Pytorch implementation of our method "OOSTraj: Out-of-Sight Trajectory Prediction With Vision-Positioning Denoising" in CVPR2024.
 
 <div align="center">
 
@@ -53,7 +53,7 @@ The training and print accuracy logs are located under ./checkpoints/
 
 ## BibTeX
     @inproceedigs{Zhang2024Out-of-SightTrajPred,
-        title={Noise-free Out-of-Sight Trajectory Prediction with Vision-Positioning Denoising},
+        title={OOSTraj: Out-of-Sight Trajectory Prediction With Vision-Positioning Denoising},
         author={Haichao Zhang, Yi Xu, Hongsheng Lu, Takayuki Shimizu, and Yun Fu},
         booktitle={In Proceedings of IEEE/CVF Conference on Computer Vision and Pattern Recognition 2024 (CVPR '24)},
         year={2024}
