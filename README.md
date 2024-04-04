@@ -12,7 +12,7 @@ by [Haichao Zhang](https://Hai-chao-Zhang.github.io/), [Yi Xu](https://sites.goo
 
 ---
 
-Pytorch implementation of our method "OOSTraj: Out-of-Sight Trajectory Prediction With Vision-Positioning Denoising" in CVPR2024.
+Pytorch implementation of ["OOSTraj: Out-of-Sight Trajectory Prediction With Vision-Positioning Denoising"](https://arxiv.org/abs/2404.02227) in CVPR2024.
 
 <div align="center">
 
